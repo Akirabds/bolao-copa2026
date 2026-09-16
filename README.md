@@ -1,6 +1,20 @@
 # Bolão da Copa 2026
 
-Sistema completo de bolão para a Copa do Mundo FIFA 2026 — desenvolvido com Next.js 14, Prisma e Tailwind CSS.
+Plataforma full-stack de bolão para a Copa do Mundo FIFA 2026, com cadastro de participantes, palpites por fase, pagamento via PIX/cartão, sincronização automática de resultados e um painel administrativo completo.
+
+> **Status:** projeto concluído — o torneio terminou e o sistema não está mais em produção. Este repositório fica como peça de portfólio, mostrando um fluxo completo de produto: da regra de negócio ao deploy em VPS própria.
+
+## Sobre o projeto
+
+Construí e operei essa plataforma sozinho, do zero ao ar, incluindo a parte que normalmente fica escondida atrás de um framework: autenticação, cobrança, sincronização com API externa e o painel administrativo que sustenta a operação do bolão no dia a dia.
+
+**Destaques técnicos:**
+- **Motor de pontuação e regras de negócio** configuráveis (múltiplas faixas de pontos, desempate por critérios, liberação de fases em cascata)
+- **Autenticação própria** com JWT + cookies httpOnly (sem depender de um provedor terceiro)
+- **Integração de pagamentos** (PIX + cartão) com checkout, retorno e webhook de confirmação
+- **Sincronização automática de resultados** via API externa de futebol, com polling configurável e fallback manual
+- **Painel administrativo completo**: gestão de pagamentos, lançamento/correção de resultados com recálculo automático de ranking, controle do ciclo de vida das fases, log de auditoria
+- **Deploy manual em VPS** (Oracle Cloud) com PM2 e Nginx — sem PaaS, com todo o pipeline de build/upload/restart documentado abaixo
 
 ---
 
