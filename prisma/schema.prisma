@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USUÁRIOS E PERFIS
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  phone        String?
+  cpf          String?
+  passwordHash String
+  role         String   @default("PARTICIPANT") // PARTICIPANT | ADMIN
+  isActive     Boolean  @default(true)
+  isBlocked    Boolean  @default(false)
+  blockedAt    DateTime?
+  blockedReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  predictions      Prediction[]
+  payments         Payment[]
+  phaseAccess      PhaseAccess[]
+  rankings         Ranking[]
+  termsAcceptances TermsAcceptance[]
+  notifications    Notification[]
+  pushSubscriptions PushSubscription[]
+
+  @@map("users")
+}
+
+// ============================================================
+// FASES DO BOLÃO
+// ============================================================
+
+model Phase {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique // "fase1" | "fase2"
+  type        String   // GROUP_STAGE | KNOCKOUT
+  entryFee    Float
+  status      String   @default("PRE_REGISTRATION")
+  // PRE_REGISTRATION | OPEN_FOR_PAYMENT | OPEN_FOR_PREDICTIONS | CLOSED | SETTLED | PRIZED
+  openedAt    DateTime?
+  closedAt    DateTime?
+  settledAt   DateTime?
+  prizedAt    DateTime?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  matches     Match[]
+  payments    Payment[]
+  phaseAccess PhaseAccess[]
+  predictions Prediction[]
+  prizes      Prize[]
+  rankings    Ranking[]
+
+  @@map("phases")
+}
+
+model PhaseAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  phaseId   String
+  status    String   @default("PENDING")
+  // PENDING | PAYMENT_APPROVED | ACCESS_GRANTED | AWAITING_PHASE_RELEASE | BLOCKED | DISQUALIFIED
+  grantedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phase Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, phaseId])
+  @@map("phase_access")
+}
+
+// ============================================================
+// PARTIDAS
+// ============================================================
+
+model Match {
+  id                   String    @id @default(cuid())
+  phaseId              String
+  groupCode            String?   // A, B, C... ou null para mata-mata
+  matchday             Int?      // Rodada dentro do grupo (1, 2, 3)
+  roundLabel           String?   // "Oitavas", "Quartas", "Semi", "3º Lugar", "Final"
+  selection1           String    // Nome da seleção 1
+  selection2           String    // Nome da seleção 2
+  flag1                String?   // Emoji ou código do país
+  flag2                String?
+  kickoffAt            DateTime
+  location             String?
+  stadium              String?
+  matchStatus          String    @default("SCHEDULED")
+  // SCHEDULED | LIVE | FINISHED | CANCELLED | POSTPONED
+  officialScore1       Int?
+  officialScore2       Int?
+  resultConfirmedAt    DateTime?
+  predictionDeadlineAt DateTime? // Se null, usa kickoffAt
+  sortOrder            Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  phase       Phase       @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+  resultLogs  MatchResultLog[]
+
+  @@map("matches")
+}
+
+model MatchResultLog {
+  id          String   @id @default(cuid())
+  matchId     String
+  score1      Int
+  score2      Int
+  confirmedBy String
+  confirmedAt DateTime @default(now())
+  action      String   // SET | UNDO | CORRECT
+  notes       String?
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("match_result_logs")
+}
+
+// ============================================================
+// PALPITES
+// ============================================================
+
+model Prediction {
+  id              String   @id @default(cuid())
+  userId          String
+  matchId         String
+  phaseId         String
+  predictedScore1 Int
+  predictedScore2 Int
+  submittedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lockedAt        DateTime?
+  status          String   @default("SAVED")
+  // DRAFT | SAVED | LOCKED | SCORED
+  pointsAwarded   Int?
+  exactScoreHit   Boolean?
+  outcomeHit      Boolean?
+  scoringDetail   String?  // JSON com detalhe da pontuação
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  phase Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+  @@map("predictions")
+}
+
+// ============================================================
+// PAGAMENTOS
+// ============================================================
+
+model Payment {
+  id               String    @id @default(cuid())
+  userId           String
+  phaseId          String
+  amount           Float
+  gateway          String    @default("manual") // mercadopago | stripe | manual
+  gatewayReference String?
+  pixCode          String?
+  pixQrCode        String?
+  status           String    @default("PENDING")
+  // PENDING | APPROVED | REJECTED | CANCELLED | EXPIRED | REFUNDED | IN_ANALYSIS
+  paidAt           DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  notes            String?
+  approvedBy       String?   // userId do admin que aprovou manualmente
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phase         Phase          @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  paymentEvents PaymentEvent[]
+
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id        String   @id @default(cuid())
+  paymentId String
+  status    String
+  rawData   String?  // JSON como string
+  source    String   @default("system") // webhook | manual | system
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("payment_events")
+}
+
+// ============================================================
+// RANKING E PONTUAÇÃO
+// ============================================================
+
+model Ranking {
+  id               String    @id @default(cuid())
+  userId           String
+  phaseId          String
+  position         Int?
+  totalPoints      Int       @default(0)
+  exactScores      Int       @default(0)
+  outcomeHits      Int       @default(0)
+  predictionsCount Int       @default(0)
+  lastPredictionAt DateTime?
+  tiebreakOrder    Int?
+  updatedAt        DateTime  @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phase Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, phaseId])
+  @@map("rankings")
+}
+
+// ============================================================
+// REGRAS DE PONTUAÇÃO
+// ============================================================
+
+model ScoreRule {
+  id          String   @id @default(cuid())
+  ruleKey     String   @unique // EXACT | WINNER_WINNER_GOALS | DRAW | WINNER_LOSER_GOALS | WINNER | MISS
+  name        String
+  description String
+  points      Int
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("score_rules")
+}
+
+// ============================================================
+// PREMIAÇÃO
+// ============================================================
+
+model Prize {
+  id          String    @id @default(cuid())
+  phaseId     String
+  position    Int
+  percentage  Float?
+  fixedAmount Float?
+  description String?
+  winnerId    String?
+  winnerName  String?
+  prizeAmount Float?
+  status      String    @default("PENDING") // PENDING | CONFIRMED | PAID
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  phase Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@map("prizes")
+}
+
+// ============================================================
+// CONFIGURAÇÕES DO SISTEMA
+// ============================================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   // JSON como string
+  label     String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("system_settings")
+}
+
+// ============================================================
+// TERMOS E REGULAMENTO
+// ============================================================
+
+model TermsAcceptance {
+  id         String   @id @default(cuid())
+  userId     String
+  version    String   @default("1.0")
+  acceptedAt DateTime @default(now())
+  ipAddress  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("terms_acceptances")
+}
+
+// ============================================================
+// AUDITORIA
+// ============================================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String?
+  action    String
+  entity    String
+  entityId  String?
+  oldData   String?  // JSON como string
+  newData   String?  // JSON como string
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ============================================================
+// NOTIFICAÇÕES
+// ============================================================
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_subscriptions")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  title     String
+  message   String
+  type      String   @default("info") // info | success | warning | error
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
